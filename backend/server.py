@@ -15,8 +15,9 @@ import bcrypt
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
-UPLOAD_DIR = ROOT_DIR / 'uploads'
-UPLOAD_DIR.mkdir(exist_ok=True)
+
+import storage  # noqa: E402  (must be after load_dotenv so env vars are available)
+UPLOAD_DIR = storage.UPLOAD_DIR
 
 mongo_client = AsyncIOMotorClient(os.environ['MONGO_URL'])
 db = mongo_client[os.environ['DB_NAME']]
@@ -848,18 +849,30 @@ async def upload_video(request: Request, file: UploadFile = File(...)):
     # Allow candidate (via interview cookie) OR user session
     ext = (file.filename or "video.webm").rsplit(".", 1)[-1]
     fname = f"int_{uuid.uuid4().hex}.{ext}"
-    fpath = UPLOAD_DIR / fname
-    with open(fpath, "wb") as f: f.write(await file.read())
+    data = await file.read()
+    content_type = file.content_type or "video/webm"
+    storage.save_bytes(fname, data, content_type)
     return {"url": f"/api/files/{fname}", "filename": fname}
 
 @api.get("/files/{filename}")
 async def serve_file(filename: str):
-    fp = UPLOAD_DIR / filename
-    if not fp.exists(): raise HTTPException(404, "Not found")
+    # Remote (Supabase): redirect to signed URL
+    if storage.is_remote():
+        from fastapi.responses import RedirectResponse
+        url = storage.get_url(filename, expires_in=3600)
+        if not url: raise HTTPException(404, "Not found")
+        return RedirectResponse(url=url, status_code=302)
+    # Local fallback
+    fp = storage.open_local(filename)
+    if not fp: raise HTTPException(404, "Not found")
     return FileResponse(fp)
 
 @api.get("/")
 async def root(): return {"service": "AI Interviewer", "ok": True}
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "remote_storage": storage.is_remote()}
 
 # ----------------- App wiring -----------------
 

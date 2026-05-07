@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: scorebar-api
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "gunicorn -w 2 -k uvicorn.workers.UvicornWorker server:app --bind 0.0.0.0:$PORT --timeout 120"
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: MONGO_URL
+        sync: false           # set in Render dashboard → MongoDB Atlas connection string
+      - key: DB_NAME
+        value: scorebar_db
+      - key: CORS_ORIGINS
+        sync: false           # e.g. https://scorebar.bar,https://www.scorebar.bar,https://scorebar-frontend.vercel.app
+      - key: EMERGENT_LLM_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        value: admin@scorebar.bar
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: interview-recordings
+      # ---- Set the below AFTER the site is live (Razorpay/Mailtrap KYC) ----
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: MAILTRAP_API_TOKEN
+        sync: false
+      - key: MAILTRAP_SENDER_EMAIL
+        value: noreply@scorebar.bar
