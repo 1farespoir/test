@@ -207,6 +207,14 @@ async def logout(request: Request, response: Response):
 @api.post("/auth/role")
 async def set_role(payload: RoleSwitchIn, request: Request):
     user = await require_user(request)
+    if user.get("frozen"):
+        raise HTTPException(403, "This account cannot change roles (test/demo account).")
+    # Only allow switching between non-privileged roles. HR role is granted via signup approval flow.
+    if payload.role not in ("candidate", "hr"):
+        raise HTTPException(400, "Invalid role")
+    # Prevent privilege escalation: a candidate cannot self-promote to HR.
+    if user.get("role") == "candidate" and payload.role == "hr":
+        raise HTTPException(403, "Role escalation not allowed.")
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": payload.role}})
     return {"ok": True, "role": payload.role}
 
@@ -400,6 +408,8 @@ async def create_order(request: Request):
 @api.post("/payments/verify")
 async def verify_payment(request: Request):
     user = await require_user(request)
+    if user.get("frozen"):
+        raise HTTPException(403, "This account cannot change plans (test/demo account).")
     body = await request.json()
     plan_id = body.get("plan", "starter")
     billing = body.get("billing", "monthly")
@@ -450,6 +460,8 @@ async def list_team_members(request: Request):
 @api.post("/team/invite")
 async def invite_teammate(payload: InviteTeammateIn, request: Request):
     user = await require_user(request)
+    if user.get("frozen"):
+        raise HTTPException(403, "This account cannot invite teammates (test/demo account).")
     # only the owner can invite
     if user.get("owner_user_id"):
         raise HTTPException(403, "Only the team owner can invite members.")
