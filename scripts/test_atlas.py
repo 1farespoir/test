@@ -26,7 +26,9 @@ except Exception as e:
     sys.exit(1)
 
 # Confirm we can write
-db = client.get_default_database() or client["scorebar_db"]
+db = client.get_default_database()
+if db is None:
+    db = client["scorebar_db"]
 print(f"→ Using database: {db.name}")
 print("→ Writing test doc...")
 res = db.connection_test.insert_one({"ok": True, "ts": datetime.now(timezone.utc)})
