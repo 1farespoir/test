@@ -659,19 +659,31 @@ async def complete(interview_id: str, request: Request):
     except Exception: pass
     video_url = body.get("video_url", "") if isinstance(body, dict) else ""
     transcript = "\n".join([f"Q: {q['q']}\nA: {q['a']}" for q in inter["questions"] if q.get("a")])
-    raw = await llm(f"score_{interview_id}", SCORING_SYS.replace("{role}", inter["role"]),
-                    transcript or "No answers given.")
-    scored = parse_json_block(raw) or {}
-    scores = {k: int(scored.get(k, 50) or 50) for k in ["technical","soft_skills","cultural_fit","experience","personality"]}
+
+    # AI scoring is best-effort. If LLM fails (rate limit, no balance, network), still mark
+    # the interview as completed with placeholder scores so HR can review the transcript/video.
+    scoring_error = None
+    try:
+        raw = await llm(f"score_{interview_id}", SCORING_SYS.replace("{role}", inter["role"]),
+                        transcript or "No answers given.")
+        scored = parse_json_block(raw) or {}
+    except Exception as e:
+        logging.exception("LLM scoring failed for %s", interview_id)
+        scoring_error = str(e)
+        scored = {}
+
+    scores = {k: int(scored.get(k, 0) or 0) for k in ["technical","soft_skills","cultural_fit","experience","personality"]}
     overall = int(scored.get("overall", sum(scores.values()) // 5))
     feedback = {
         "strengths": scored.get("strengths", []), "weaknesses": scored.get("weaknesses", []),
-        "recommendation": scored.get("recommendation", "Lean Hire"), "summary": scored.get("summary", ""),
+        "recommendation": scored.get("recommendation", "Pending AI review" if scoring_error else "Lean Hire"),
+        "summary": scored.get("summary", f"AI scoring unavailable: {scoring_error[:100]}" if scoring_error else ""),
     }
     await db.interviews.update_one({"id": interview_id}, {"$set": {
         "status": "completed", "transcript": transcript, "scores": scores,
         "overall": overall, "feedback": json.dumps(feedback),
         "video_url": video_url or inter.get("video_url", ""),
+        "scoring_error": scoring_error,
     }})
     await log_email(inter["candidate_email"], f"Interview complete: {inter['role']}",
                     f"Thanks for completing your interview.\nYour meeting code: {inter['code']}\nCheck your status: /status?code={inter['code']}\n")
@@ -872,7 +884,13 @@ async def root(): return {"service": "AI Interviewer", "ok": True}
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "remote_storage": storage.is_remote()}
+    out = {
+        "status": "healthy",
+        "remote_storage": storage.is_remote(),
+        "llm_key_set": bool(EMERGENT_LLM_KEY),
+        "llm_key_prefix": (EMERGENT_LLM_KEY[:12] + "...") if EMERGENT_LLM_KEY else None,
+    }
+    return out
 
 # ----------------- App wiring -----------------
 
