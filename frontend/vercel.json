@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
-  "installCommand": "npm install --legacy-peer-deps",
+  "installCommand": "yarn install --frozen-lockfile",
+  "buildCommand": "yarn build",
   "outputDirectory": "build",
   "framework": "create-react-app",
   "rewrites": [
