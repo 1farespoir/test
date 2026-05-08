@@ -880,7 +880,7 @@ app.include_router(api)
 app.add_middleware(
     CORSMiddleware, allow_credentials=True,
     allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_origin_regex=r"https?://.*\.emergentagent\.com|http://localhost(:\d+)?",
+    allow_origin_regex=r"https?://.*\.emergentagent\.com|https?://.*\.vercel\.app|https?://(www\.)?scorebar\.bar|http://localhost(:\d+)?",
     allow_methods=["*"], allow_headers=["*"],
 )
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
