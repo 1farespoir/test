@@ -540,6 +540,7 @@ async def contact_submit(payload: ContactIn):
 class InviteTeammateIn(BaseModel):
     name: str
     email: EmailStr
+    password: Optional[str] = None  # If provided, use this; otherwise auto-generate
 
 def get_owner_id(user: dict) -> str:
     """If user is invited member, owner is owner_user_id; otherwise themselves."""
@@ -590,7 +591,12 @@ async def invite_teammate(payload: InviteTeammateIn, request: Request):
     if await db.users.find_one({"email": payload.email}):
         raise HTTPException(409, "A user with this email already exists.")
     # create teammate user (active immediately, role=hr, shares quotas via owner_user_id)
-    plain_pw = gen_password(10)
+    if payload.password:
+        if len(payload.password) < 8:
+            raise HTTPException(400, "Password must be at least 8 characters.")
+        plain_pw = payload.password
+    else:
+        plain_pw = gen_password(10)
     new_user_id = f"user_{uuid.uuid4().hex[:12]}"
     teammate = {
         "user_id": new_user_id, "email": payload.email,
@@ -606,7 +612,7 @@ async def invite_teammate(payload: InviteTeammateIn, request: Request):
     await db.users.insert_one(dict(teammate))
     await log_email(payload.email, f"You're invited to {user.get('company_name') or 'Scorebar'} on Scorebar",
                     f"Hi {payload.name},\n\n{user.get('name', 'Your teammate')} invited you to collaborate on Scorebar.\n\n"
-                    f"Username: {teammate['username']}\nPassword: {plain_pw}\nLogin: /login\n\nYou'll share the team's interview workspace and quota.\n")
+                    f"Username: {teammate['username']}\nPassword: {plain_pw}\nLogin: {PUBLIC_APP_URL}/login\n\nThis is your permanent password. You can change it anytime from your profile.\nYou'll share the team's interview workspace and quota.\n")
     teammate.pop("password_hash", None)
     return {"ok": True, "member": teammate, "password": plain_pw}
 

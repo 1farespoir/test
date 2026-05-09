@@ -18,6 +18,7 @@ export default function TeamSettings() {
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [tempPassword, setTempPassword] = useState(null);
+  const [customPassword, setCustomPassword] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -42,11 +43,14 @@ export default function TeamSettings() {
   const submit = async (e) => {
     e.preventDefault();
     if (!name || !email) return toast.error("Fill all fields");
+    if (customPassword && customPassword.length < 8) return toast.error("Password must be at least 8 characters");
     setSubmitting(true);
     try {
-      const res = await api.post("/team/invite", { name, email });
+      const payload = { name, email };
+      if (customPassword) payload.password = customPassword;
+      const res = await api.post("/team/invite", payload);
       setTempPassword(res.data.password);
-      setName(""); setEmail("");
+      setName(""); setEmail(""); setCustomPassword("");
       toast.success(`${res.data.member.name} added to your team`);
       await load();
     } catch (e) {
@@ -152,7 +156,7 @@ export default function TeamSettings() {
                 {tempPassword ? (
                   <div className="border-2 border-[#10B981] bg-[#10B981]/5 p-5" data-testid="invite-success">
                     <div className="overline text-[#10B981] mb-2">Member added — share their login</div>
-                    <div className="text-sm text-gray-700 mb-3">An email was sent. Their temporary password:</div>
+                    <div className="text-sm text-gray-700 mb-3">An email was sent with their login. Their password (they can change it later):</div>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 bg-gray-900 text-white font-mono text-sm px-4 py-3 select-all">{tempPassword}</code>
                       <button onClick={copyPw} className="btn-secondary !py-2 !px-3 text-sm" data-testid="copy-temp-pw"><Copy className="w-4 h-4" /></button>
@@ -168,6 +172,11 @@ export default function TeamSettings() {
                     <div>
                       <label className="overline block mb-2">Work email</label>
                       <input data-testid="invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full border-2 border-gray-900 px-4 py-3 text-sm focus:outline-none focus:border-[#002FA7]" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="overline block mb-2">Password <span className="text-gray-500 text-[11px] normal-case">(optional — leave empty to auto-generate a random one)</span></label>
+                      <input data-testid="invite-password" type="text" value={customPassword} onChange={(e) => setCustomPassword(e.target.value)} placeholder="Min 8 characters, or leave blank" className="w-full border-2 border-gray-900 px-4 py-3 text-sm font-mono focus:outline-none focus:border-[#002FA7]" />
+                      <p className="text-xs text-gray-500 mt-1">This becomes their permanent login password. They can change it later from their profile.</p>
                     </div>
                     <div className="sm:col-span-2 flex justify-end gap-2">
                       <button type="button" onClick={() => setShowInvite(false)} className="btn-secondary !py-2 !px-4 text-sm" data-testid="cancel-invite">Cancel</button>
