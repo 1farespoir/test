@@ -2,20 +2,25 @@ import React, { useState } from "react";
 import Navbar from "../components/Navbar";
 import { Mail, MessageSquare, Phone, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "../lib/api";
 
 export default function Contact() {
   const [form, setForm] = useState({ name: "", email: "", company: "", message: "" });
   const [sending, setSending] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.message) return toast.error("Please fill in all required fields");
     setSending(true);
-    setTimeout(() => {
-      setSending(false);
+    try {
+      await api.post("/contact", form);
       toast.success("Thanks! Our team will reach out within 1 business day.");
       setForm({ name: "", email: "", company: "", message: "" });
-    }, 900);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Failed to send. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (

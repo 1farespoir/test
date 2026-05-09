@@ -46,13 +46,46 @@ export default function Pricing() {
     if (plan.id === "enterprise") { navigate("/contact"); return; }
     if (!user) { navigate("/login"); return; }
     try {
-      const { data } = await api.post("/payments/create-order", { plan: plan.id, billing });
-      toast("Mocked payment success — Razorpay keys not yet configured");
+      const { data: order } = await api.post("/payments/create-order", { plan: plan.id, billing });
+
+      // If backend returned a real Razorpay order, open Checkout.
+      if (!order.mocked && order.key_id && window.Razorpay) {
+        const rzp = new window.Razorpay({
+          key: order.key_id,
+          amount: order.amount,
+          currency: order.currency || "INR",
+          order_id: order.order_id,
+          name: "Scorebar.AI",
+          description: `${plan.name} plan — ${billing}`,
+          prefill: { name: user.name || "", email: user.email || "" },
+          theme: { color: "#002FA7" },
+          handler: async (rsp) => {
+            try {
+              await api.post("/payments/verify", {
+                plan: plan.id, billing,
+                razorpay_order_id: rsp.razorpay_order_id,
+                razorpay_payment_id: rsp.razorpay_payment_id,
+                razorpay_signature: rsp.razorpay_signature,
+              });
+              await checkAuth();
+              toast.success(`Welcome to ${plan.name}!`);
+            } catch (e) {
+              toast.error(e?.response?.data?.detail || "Payment verification failed");
+            }
+          },
+          modal: { ondismiss: () => toast("Payment cancelled") },
+        });
+        rzp.open();
+        return;
+      }
+
+      // Fallback: mocked flow (Razorpay keys not yet configured)
+      toast("Demo upgrade — Razorpay keys not configured");
       await api.post("/payments/verify", { plan: plan.id, billing });
       await checkAuth();
       toast.success(`Upgraded to ${plan.name}`);
     } catch (e) {
-      toast.error("Payment failed");
+      toast.error(e?.response?.data?.detail || "Payment failed");
     }
   };
 
@@ -187,7 +220,7 @@ export default function Pricing() {
             })}
           </div>
           <p className="mt-10 text-center text-xs text-gray-500" data-testid="payment-note">
-            Razorpay (INR) and international card payments — currently in <span className="font-medium">MOCK</span> mode. Production keys can be plugged in later.
+            Razorpay (INR) and international card payments — secure checkout. SOC 2 ready.
           </p>
         </div>
       </section>

@@ -24,8 +24,30 @@ db = mongo_client[os.environ['DB_NAME']]
 
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@aria.ai')
+MAILTRAP_API_TOKEN = os.environ.get('MAILTRAP_API_TOKEN', '').strip()
+MAILTRAP_SENDER_EMAIL = os.environ.get('MAILTRAP_SENDER_EMAIL', 'noreply@scorebar.bar').strip()
+RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '').strip()
+RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '').strip()
+PUBLIC_APP_URL = os.environ.get('PUBLIC_APP_URL', 'https://scorebar.bar').strip()
 stt_client = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
 tts_client = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
+
+# --- Optional integrations (graceful fallback if env vars not set) ---
+_mailtrap_client = None
+if MAILTRAP_API_TOKEN:
+    try:
+        import mailtrap as _mt
+        _mailtrap_client = _mt.MailtrapClient(token=MAILTRAP_API_TOKEN)
+    except Exception as _e:
+        logging.warning("Mailtrap init failed: %s", _e)
+
+_razorpay_client = None
+if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
+    try:
+        import razorpay as _rp
+        _razorpay_client = _rp.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+    except Exception as _e:
+        logging.warning("Razorpay init failed: %s", _e)
 
 def hash_pw(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
@@ -85,10 +107,35 @@ async def get_interview_access(request: Request, interview_id: str):
     raise HTTPException(401, "Access denied")
 
 async def log_email(to: str, subject: str, body: str):
-    # MOCKED email log
-    doc = {"to": to, "subject": subject, "body": body, "at": datetime.now(timezone.utc).isoformat(), "mocked": True}
+    """Send email via Mailtrap if configured; always write audit log to MongoDB."""
+    sent = False
+    error = None
+    if _mailtrap_client:
+        try:
+            import mailtrap as _mt
+            mail = _mt.Mail(
+                sender=_mt.Address(email=MAILTRAP_SENDER_EMAIL, name="Scorebar.AI"),
+                to=[_mt.Address(email=to)],
+                subject=subject,
+                text=body,
+                category="transactional",
+            )
+            # Mailtrap SDK is sync; run in threadpool to keep endpoint async
+            import asyncio
+            await asyncio.to_thread(_mailtrap_client.send, mail)
+            sent = True
+        except Exception as e:
+            error = str(e)[:300]
+            logging.exception("Mailtrap send failed for %s", to)
+
+    doc = {
+        "to": to, "subject": subject, "body": body,
+        "at": datetime.now(timezone.utc).isoformat(),
+        "sent": sent, "error": error,
+        "mocked": not _mailtrap_client,
+    }
     await db.email_log.insert_one(doc)
-    logging.info(f"[MOCKED EMAIL] to={to} subject={subject}")
+    logging.info(f"[EMAIL {'SENT' if sent else 'MOCK'}] to={to} subject={subject}")
 
 # ----------------- LLM -----------------
 
@@ -394,6 +441,7 @@ async def get_plans(): return {"plans": PLANS}
 
 @api.post("/payments/create-order")
 async def create_order(request: Request):
+    user = await require_user(request)
     body = await request.json()
     plan_id = body.get("plan")
     billing = body.get("billing", "monthly")  # monthly | yearly
@@ -401,8 +449,27 @@ async def create_order(request: Request):
     if not plan or plan_id in ("free", "enterprise"):
         raise HTTPException(400, "Invalid plan")
     price_inr = plan["price_inr_yearly"] if billing == "yearly" else plan["price_inr_monthly"]
+    amount_paise = int(price_inr) * 100  # Razorpay expects paise
+
+    # Real Razorpay order if keys configured
+    if _razorpay_client:
+        try:
+            import asyncio
+            order = await asyncio.to_thread(
+                _razorpay_client.order.create,
+                {"amount": amount_paise, "currency": "INR", "payment_capture": 1,
+                 "notes": {"user_id": user["user_id"], "plan": plan_id, "billing": billing}}
+            )
+            return {"mocked": False, "order_id": order["id"], "amount": order["amount"],
+                    "currency": order["currency"], "key_id": RAZORPAY_KEY_ID,
+                    "plan": plan, "billing": billing}
+        except Exception as e:
+            logging.exception("Razorpay order create failed")
+            raise HTTPException(502, f"Payment provider error: {str(e)[:200]}")
+
+    # Fallback: mocked
     return {"mocked": True, "order_id": f"order_mock_{uuid.uuid4().hex[:10]}",
-            "amount": price_inr * 100, "currency": "INR", "key_id": "rzp_test_MOCKED",
+            "amount": amount_paise, "currency": "INR", "key_id": "rzp_test_MOCKED",
             "plan": plan, "billing": billing}
 
 @api.post("/payments/verify")
@@ -416,13 +483,57 @@ async def verify_payment(request: Request):
     plan = plan_by_id(plan_id)
     if not plan or plan_id in ("free", "enterprise"):
         raise HTTPException(400, "Invalid plan")
+
+    # If real Razorpay keys configured, verify signature
+    if _razorpay_client:
+        rzp_order_id = body.get("razorpay_order_id")
+        rzp_payment_id = body.get("razorpay_payment_id")
+        rzp_signature = body.get("razorpay_signature")
+        if not (rzp_order_id and rzp_payment_id and rzp_signature):
+            raise HTTPException(400, "Missing Razorpay payment fields")
+        try:
+            _razorpay_client.utility.verify_payment_signature({
+                "razorpay_order_id": rzp_order_id,
+                "razorpay_payment_id": rzp_payment_id,
+                "razorpay_signature": rzp_signature,
+            })
+        except Exception:
+            logging.exception("Razorpay signature verification failed")
+            raise HTTPException(400, "Invalid payment signature")
+
     quota = plan["interviews"]
     await db.users.update_one(
         {"user_id": user["user_id"]},
         {"$set": {"plan": plan_id, "billing_cycle": billing, "interviews_used": 0,
                   "interviews_quota": quota, "team_member_limit": plan["team_members"]}}
     )
-    return {"mocked": True, "ok": True, "plan": plan_id, "billing": billing}
+    return {"ok": True, "plan": plan_id, "billing": billing}
+
+# ----------------- CONTACT FORM -----------------
+
+class ContactIn(BaseModel):
+    name: str
+    email: EmailStr
+    company: Optional[str] = ""
+    message: str
+
+@api.post("/contact")
+async def contact_submit(payload: ContactIn):
+    if not payload.message.strip() or len(payload.message) > 5000:
+        raise HTTPException(400, "Invalid message")
+    # Notify admin
+    await log_email(
+        ADMIN_EMAIL,
+        f"[Scorebar contact] {payload.name} ({payload.email})",
+        f"Name: {payload.name}\nEmail: {payload.email}\nCompany: {payload.company or '-'}\n\nMessage:\n{payload.message}\n",
+    )
+    # Auto-reply to sender
+    await log_email(
+        payload.email,
+        "We received your message — Scorebar.AI",
+        f"Hi {payload.name},\n\nThanks for reaching out. Our team will get back to you within 1 business day.\n\nIf urgent, reply to this email.\n\n— Scorebar.AI Team\n",
+    )
+    return {"ok": True}
 
 # ----------------- TEAM MANAGEMENT (premium) -----------------
 
@@ -901,6 +1012,9 @@ async def health():
         "remote_storage": storage.is_remote(),
         "llm_key_set": bool(EMERGENT_LLM_KEY),
         "llm_key_prefix": (EMERGENT_LLM_KEY[:12] + "...") if EMERGENT_LLM_KEY else None,
+        "mailtrap_active": bool(_mailtrap_client),
+        "razorpay_active": bool(_razorpay_client),
+        "razorpay_key_prefix": (RAZORPAY_KEY_ID[:12] + "...") if RAZORPAY_KEY_ID else None,
     }
     return out
 

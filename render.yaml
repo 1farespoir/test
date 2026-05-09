@@ -37,3 +37,5 @@ services:
         sync: false
       - key: MAILTRAP_SENDER_EMAIL
         value: noreply@scorebar.bar
+      - key: PUBLIC_APP_URL
+        value: https://scorebar.bar
