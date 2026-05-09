@@ -16,6 +16,7 @@ import TextAssessment from "./pages/TextAssessment";
 import Pricing from "./pages/Pricing";
 import Signup from "./pages/Signup";
 import AdminPanel from "./pages/AdminPanel";
+import AdminPortal from "./pages/AdminPortal";
 import Apply from "./pages/Apply";
 import Status from "./pages/Status";
 import Careers from "./pages/Careers";
@@ -50,6 +51,7 @@ function AppRouter() {
       <Route path="/login" element={<Login/>}/>
       <Route path="/signup" element={<Signup/>}/>
       <Route path="/admin" element={<ProtectedHR><AdminPanel/></ProtectedHR>}/>
+      <Route path="/admin-portal" element={<AdminPortal/>}/>
       <Route path="/pricing" element={<Pricing/>}/>
       <Route path="/apply/:job_code" element={<Apply/>}/>
       <Route path="/join" element={<Landing/>}/>
