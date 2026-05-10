@@ -8,6 +8,7 @@ import {
   Linkedin, Twitter, Github, Mail
 } from "lucide-react";
 import { api } from "../lib/api";
+import { setInterviewCode } from "../lib/api";
 import { toast } from "sonner";
 
 const HERO_AI = "https://static.prod-images.emergentagent.com/jobs/8b2c19c4-8421-4225-b01f-82c5e4a0c9f1/images/5b34011c78c266fc6e627ec3e6480443e6951e3f34741101aa9ceb495b414767.png";
@@ -30,6 +31,7 @@ export default function Landing() {
     if (mode === "status") { navigate(`/status?code=${code}`); return; }
     try {
       const { data } = await api.post("/interviews/join", { code });
+      setInterviewCode(data.code || code);
       if (data.status === "completed") navigate(`/status?code=${code}`);
       else navigate(`/interview/${data.id}/${data.interview_type === "voice" ? "session" : "text"}`);
     } catch (err) {

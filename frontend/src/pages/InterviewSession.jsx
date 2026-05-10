@@ -1,9 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import { api, API } from "../lib/api";
+import { api, API, INTERVIEW_CODE_KEY } from "../lib/api";
 import { Mic, Square, Loader2, CheckCircle2, Camera, AudioLines, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+
+// Helper for the raw fetch() calls (FormData uploads + TTS) so they also send
+// the candidate's interview code via header — required for browsers that block
+// the cross-site cookie (Safari, iOS, Brave, Firefox strict).
+function candidateHeaders() {
+  try {
+    const code = localStorage.getItem(INTERVIEW_CODE_KEY);
+    return code ? { "x-interview-code": code } : {};
+  } catch { return {}; }
+}
 
 export default function InterviewSession() {
   const { id } = useParams();
@@ -62,6 +72,18 @@ export default function InterviewSession() {
   }, [id]);
 
   async function initMedia(bindSessionVideo) {
+    // Older iOS Safari (< 14.3) and some embedded browsers don't support MediaRecorder.
+    // Detect early and surface a clear, friendly message instead of failing silently mid-interview.
+    if (typeof window.MediaRecorder === "undefined") {
+      toast.error("Your browser doesn't support video recording. Please use Chrome, Safari 14.3+, or update your browser.");
+      setMediaReady(false);
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast.error("Your browser cannot access the camera/mic. Please use the latest Chrome or Safari.");
+      setMediaReady(false);
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
@@ -146,7 +168,7 @@ export default function InterviewSession() {
     setAiSpeaking(true);
     try {
       const res = await fetch(`${API}/tts`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", ...candidateHeaders() },
         credentials: "include", body: JSON.stringify({ text, voice: "nova" }),
       });
       const blob = await res.blob();
@@ -160,7 +182,25 @@ export default function InterviewSession() {
   function startRec() {
     if (!streamRef.current) return;
     chunksRef.current = [];
-    const rec = new MediaRecorder(streamRef.current, { mimeType: "video/webm" });
+    // Pick a mimeType the current browser actually supports.
+    // iOS Safari, for example, cannot record video/webm and needs video/mp4.
+    const candidates = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+      "video/mp4;codecs=h264,aac",
+      "video/mp4",
+    ];
+    const mimeType = candidates.find((mt) =>
+      typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mt)
+    );
+    let rec;
+    try {
+      rec = mimeType ? new MediaRecorder(streamRef.current, { mimeType }) : new MediaRecorder(streamRef.current);
+    } catch {
+      try { rec = new MediaRecorder(streamRef.current); }
+      catch { toast.error("Recording isn't supported on this browser. Please use Chrome or Safari 14.3+."); return; }
+    }
     rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
     rec.start();
     recorderRef.current = rec;
@@ -172,19 +212,21 @@ export default function InterviewSession() {
     try {
       const rec = recorderRef.current;
       await new Promise((res) => { rec.onstop = res; rec.stop(); });
-      const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      const recordedType = rec.mimeType || "video/webm";
+      const ext = recordedType.includes("mp4") ? "mp4" : "webm";
+      const blob = new Blob(chunksRef.current, { type: recordedType });
       let videoUrl = "";
       try {
-        const fd = new FormData(); fd.append("file", blob, `q${qIndex}.webm`);
-        const r = await fetch(`${API}/upload/video`, { method: "POST", body: fd, credentials: "include" });
+        const fd = new FormData(); fd.append("file", blob, `q${qIndex}.${ext}`);
+        const r = await fetch(`${API}/upload/video`, { method: "POST", body: fd, credentials: "include", headers: candidateHeaders() });
         const j = await r.json(); videoUrl = j.url || "";
-      } catch {}
+      } catch { /* video upload failure should not block the answer */ }
       let text = "";
       try {
-        const fd2 = new FormData(); fd2.append("file", blob, `q${qIndex}.webm`);
-        const s = await fetch(`${API}/stt`, { method: "POST", body: fd2, credentials: "include" });
+        const fd2 = new FormData(); fd2.append("file", blob, `q${qIndex}.${ext}`);
+        const s = await fetch(`${API}/stt`, { method: "POST", body: fd2, credentials: "include", headers: candidateHeaders() });
         const sj = await s.json(); text = sj.text || "";
-      } catch {}
+      } catch { /* fall through to no-audio placeholder */ }
       if (!text) text = "(no audio detected)";
       const { data } = await api.post(`/interviews/${id}/respond`, { answer: text, video_url: videoUrl });
       if (data.is_final) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, setInterviewCode } from "../lib/api";
 import { toast } from "sonner";
 import { Brain } from "lucide-react";
 
@@ -25,6 +25,7 @@ export default function Apply() {
     e.preventDefault(); setBusy(true);
     try {
       const { data } = await api.post(`/jobs/${job_code}/apply`, form);
+      setInterviewCode(data.code);
       toast.success("Starting interview…");
       navigate(`/interview/${data.id}/${data.interview_type === "voice" ? "session" : "text"}`);
     } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
