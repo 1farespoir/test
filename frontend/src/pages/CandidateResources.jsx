@@ -274,7 +274,7 @@ export default function CandidateResources() {
             }}
           />
           <div className="relative px-6 sm:px-12 py-16 lg:py-20 text-center text-white">
-            <div className="overline text-white/80 mb-3">SCOREBAR.AI</div>
+            <div className="overline text-white/80 mb-3">SCOREBAR AI</div>
             <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tighter">
               Still stuck? We've got you covered.
             </h2>

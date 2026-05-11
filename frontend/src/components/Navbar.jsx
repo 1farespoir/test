@@ -51,9 +51,9 @@ export default function Navbar() {
           <div className="w-9 h-9 bg-[#002FA7] flex items-center justify-center shadow-[2px_2px_0_0_rgba(17,24,39,1)] group-hover:shadow-[3px_3px_0_0_rgba(17,24,39,1)] group-hover:-translate-x-[1px] group-hover:-translate-y-[1px] transition-all">
             <Brain className="w-5 h-5 text-white" strokeWidth={2.2} />
           </div>
-          <div className="flex items-baseline gap-1">
+          <div className="flex items-baseline gap-1.5">
             <span className="font-display text-xl font-bold tracking-tighter text-[#111827]">Scorebar</span>
-            <span className="overline text-[#002FA7]">.AI</span>
+            <span className="overline text-[#002FA7]">AI</span>
           </div>
         </Link>
 

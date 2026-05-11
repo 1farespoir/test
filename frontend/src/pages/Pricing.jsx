@@ -55,7 +55,7 @@ export default function Pricing() {
           amount: order.amount,
           currency: order.currency || "INR",
           order_id: order.order_id,
-          name: "Scorebar.AI",
+          name: "Scorebar AI",
           description: `${plan.name} plan — ${billing}`,
           prefill: { name: user.name || "", email: user.email || "" },
           theme: { color: "#002FA7" },
@@ -294,7 +294,7 @@ export default function Pricing() {
             }}
           />
           <div className="relative px-6 sm:px-12 py-20 lg:py-28 text-center text-white">
-            <div className="overline text-white/80 mb-3">SCOREBAR.AI</div>
+            <div className="overline text-white/80 mb-3">SCOREBAR AI</div>
             <h2 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tighter">
               Your next great hire<br />starts with Scorebar.
             </h2>

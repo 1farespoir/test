@@ -471,7 +471,7 @@ export default function Landing() {
               <div className="w-9 h-9 bg-[#002FA7] flex items-center justify-center shadow-[2px_2px_0_0_rgba(17,24,39,1)]">
                 <BrainCircuit className="w-5 h-5 text-white" strokeWidth={2.2}/>
               </div>
-              <span className="font-display text-2xl font-bold tracking-tighter">SCOREBAR<span className="text-[#002FA7]">.AI</span></span>
+              <span className="font-display text-2xl font-bold tracking-tighter">SCOREBAR<span className="text-[#002FA7]"> AI</span></span>
             </div>
             <p className="text-sm text-gray-600 mt-4 max-w-xs leading-relaxed">Structured AI interviews and evidence-based scoring for modern hiring teams.</p>
             <div className="flex gap-3 mt-6">
@@ -509,7 +509,7 @@ export default function Landing() {
         </div>
         <div className="border-t border-gray-300">
           <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-12 py-6 flex flex-wrap items-center justify-between gap-4 text-xs text-gray-500">
-            <div>© 2026 Scorebar.AI — built for hiring teams.</div>
+            <div>© 2026 Scorebar AI — built for hiring teams.</div>
             <div className="flex gap-5 items-center">
               <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-[#10B981] rounded-full animate-pulse"/>All systems operational</span>
               <span>Made with care</span>
