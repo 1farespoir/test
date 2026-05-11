@@ -194,9 +194,12 @@ export default function InterviewSession() {
     const mimeType = candidates.find((mt) =>
       typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mt)
     );
+    // Cap bitrate so a 2-minute answer is ~25MB instead of 200-500MB.
+    // 1.2 Mbps video + 64 kbps audio is plenty for face-cam at 720p.
+    const opts = { videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 64_000 };
     let rec;
     try {
-      rec = mimeType ? new MediaRecorder(streamRef.current, { mimeType }) : new MediaRecorder(streamRef.current);
+      rec = new MediaRecorder(streamRef.current, mimeType ? { mimeType, ...opts } : opts);
     } catch {
       try { rec = new MediaRecorder(streamRef.current); }
       catch { toast.error("Recording isn't supported on this browser. Please use Chrome or Safari 14.3+."); return; }
@@ -207,6 +210,8 @@ export default function InterviewSession() {
     setRecording(true);
   }
 
+  const [processingMsg, setProcessingMsg] = useState("");
+
   async function stopRecAndSubmit() {
     setRecording(false); setBusy(true);
     try {
@@ -215,30 +220,40 @@ export default function InterviewSession() {
       const recordedType = rec.mimeType || "video/webm";
       const ext = recordedType.includes("mp4") ? "mp4" : "webm";
       const blob = new Blob(chunksRef.current, { type: recordedType });
-      let videoUrl = "";
-      try {
-        const fd = new FormData(); fd.append("file", blob, `q${qIndex}.${ext}`);
-        const r = await fetch(`${API}/upload/video`, { method: "POST", body: fd, credentials: "include", headers: candidateHeaders() });
-        const j = await r.json(); videoUrl = j.url || "";
-      } catch { /* video upload failure should not block the answer */ }
-      let text = "";
-      try {
-        const fd2 = new FormData(); fd2.append("file", blob, `q${qIndex}.${ext}`);
-        const s = await fetch(`${API}/stt`, { method: "POST", body: fd2, credentials: "include", headers: candidateHeaders() });
-        const sj = await s.json(); text = sj.text || "";
-      } catch { /* fall through to no-audio placeholder */ }
-      if (!text) text = "(no audio detected)";
+      const sizeMb = (blob.size / (1024 * 1024)).toFixed(1);
+      setProcessingMsg(`Uploading & transcribing (${sizeMb} MB) — runs in parallel`);
+
+      // ⚡️ Run video upload + Whisper transcription IN PARALLEL.
+      // Previously these ran sequentially, doubling the wait time on every question.
+      const uploadFD = new FormData(); uploadFD.append("file", blob, `q${qIndex}.${ext}`);
+      const sttFD = new FormData(); sttFD.append("file", blob, `q${qIndex}.${ext}`);
+
+      const uploadPromise = fetch(`${API}/upload/video`, {
+        method: "POST", body: uploadFD, credentials: "include", headers: candidateHeaders(),
+      }).then((r) => r.json()).then((j) => j.url || "").catch(() => "");
+
+      const sttPromise = fetch(`${API}/stt`, {
+        method: "POST", body: sttFD, credentials: "include", headers: candidateHeaders(),
+      }).then((r) => r.json()).then((j) => j.text || "").catch(() => "");
+
+      const [videoUrl, sttText] = await Promise.all([uploadPromise, sttPromise]);
+      const text = sttText || "(no audio detected)";
+
+      setProcessingMsg("Saving answer…");
       const { data } = await api.post(`/interviews/${id}/respond`, { answer: text, video_url: videoUrl });
+
       if (data.is_final) {
+        setProcessingMsg("Finalizing…");
         await finishInterview();
       } else if (data.next_question) {
         setQIndex((n) => n + 1);
         setTotalQ(data.questions?.length || totalQ);
         setCurrentQ(data.next_question);
+        setProcessingMsg("Loading next question…");
         await speak(data.next_question);
       }
     } catch (e) { toast.error("Submit failed"); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setProcessingMsg(""); }
   }
 
   async function finishInterview() {
@@ -364,7 +379,7 @@ export default function InterviewSession() {
           {!recording && phase !== "done" && <button onClick={startRec} disabled={busy||aiSpeaking||countdown!==null} className="btn-primary inline-flex items-center gap-2" data-testid="record-button"><Mic className="w-4 h-4"/> Record answer</button>}
           {recording && <button onClick={stopRecAndSubmit} className="btn-secondary inline-flex items-center gap-2" data-testid="stop-button"><Square className="w-4 h-4"/> Stop &amp; submit</button>}
           <button onClick={finishInterview} disabled={busy||recording||phase==="done"} className="btn-secondary" data-testid="finish-button">Finish interview</button>
-          {busy && <span className="inline-flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin"/> Processing…</span>}
+          {busy && <span className="inline-flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin"/> {processingMsg || "Processing…"}</span>}
           {phase === "done" && <span className="inline-flex items-center gap-2 text-sm text-[#10B981]"><CheckCircle2 className="w-4 h-4"/> Scoring…</span>}
         </div>
 
