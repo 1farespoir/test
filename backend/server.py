@@ -392,9 +392,9 @@ PLANS = [
     {
         "id": "starter", "name": "Starter", "tagline": "For small hiring teams.",
         "price_usd_monthly": 29.99, "price_usd_yearly": 299.99, "price_inr_monthly": 2499, "price_inr_yearly": 24990,
-        "interviews": 20, "team_members": 2, "highlight": True,
+        "interviews": 50, "team_members": 2, "highlight": True,
         "features": [
-            "20 interviews / month",
+            "50 interviews / month",
             "Deep 5-section AI scoring",
             "2 team members",
             "Video recording + storage",
@@ -405,7 +405,7 @@ PLANS = [
     {
         "id": "professional", "name": "Professional", "tagline": "For growing recruiting teams.",
         "price_usd_monthly": 149.99, "price_usd_yearly": 1499.99, "price_inr_monthly": 12499, "price_inr_yearly": 124990,
-        "interviews": 110, "team_members": 5, "highlight": False,
+        "interviews": 260, "team_members": 5, "highlight": False,
         "features": [
             "110 interviews / month",
             "Advanced AI + voice interviews",
