@@ -78,7 +78,7 @@ class TestPlans:
         assert free["interviews"] == 5
         assert free["team_members"] == 1
         starter = plans["starter"]
-        assert starter["price_usd_monthly"] == 19.99
+        assert starter["price_usd_monthly"] == 29.99
         assert starter["price_usd_yearly"] == 299.99
         assert starter["team_members"] == 2
         assert starter["highlight"] is True
