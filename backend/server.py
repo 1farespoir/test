@@ -407,7 +407,7 @@ PLANS = [
         "price_usd_monthly": 149.99, "price_usd_yearly": 1499.99, "price_inr_monthly": 12499, "price_inr_yearly": 124990,
         "interviews": 260, "team_members": 5, "highlight": False,
         "features": [
-            "110 interviews / month",
+            "260 interviews / month",
             "Advanced AI + voice interviews",
             "5 team members",
             "Cohort analytics dashboard",
